@@ -1,7 +1,8 @@
 import tempfile, os
-custom_temp_dir = "C:\\Users\\johan\\Documents"
-os.makedirs(custom_temp_dir, exist_ok=True)
-tempfile.tempdir = custom_temp_dir
+from tempfile import NamedTemporaryFile
+# custom_temp_dir = "C:\\Users\\johan\\Documents"
+# # os.makedirs(custom_temp_dir, exist_ok=True)
+# tempfile.tempdir = custom_temp_dir
 from flask import Flask, request, jsonify
 from bs4 import BeautifulSoup
 import requests
@@ -100,22 +101,25 @@ def extract_recipe_details(raw_text):
 #     else:
 #         os.system("mpg123 output.mp3")
 #     print("Speech playback complete.")
-
 def speak(text):
-    """Generate speech and play it in memory."""
+    """Generate speech and play it from memory without writing to disk."""
     try:
         print(f"Speaking: {text}")
         
-        # Generate the audio as an in-memory stream
+        # Generate the audio and store it in a BytesIO buffer
         tts = gTTS(text=text, lang="en")
-        audio_buffer = BytesIO()  # Store audio in memory (no temp file)
+        audio_buffer = io.BytesIO()
         tts.write_to_fp(audio_buffer)
         audio_buffer.seek(0)
-        
-        # Play the audio using pydub (in memory)
+
+        # Convert MP3 to PCM in-memory (use ffmpeg or audio library)
         audio_segment = AudioSegment.from_file(audio_buffer, format="mp3")
-        play(audio_segment)
         
+        # Export the raw PCM data from the audio segment
+        pcm_data = np.array(audio_segment.get_array_of_samples())
+        
+        # Play raw PCM data directly using sounddevice
+        sd.play(pcm_data, samplerate=audio_segment.frame_rate, blocking=True)
         print("Speech playback complete.")
     except Exception as e:
         print(f"Error in speak function: {e}")
@@ -155,6 +159,9 @@ def listen_for_question(client):
     audio_buffer = io.BytesIO()
     wavfile.write(audio_buffer, sample_rate, np.squeeze(audio_data))
     audio_buffer.seek(0)
+
+    audio_buffer.name = "question.wav"  # Add a valid name with an extension
+
 
     # Send to OpenAI Whisper for transcription
     transcription = client.audio.transcriptions.create(model="whisper-1", file=audio_buffer)
