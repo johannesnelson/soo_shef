@@ -1,3 +1,7 @@
+import tempfile, os
+custom_temp_dir = "C:\\Users\\johan\\Documents"
+os.makedirs(custom_temp_dir, exist_ok=True)
+tempfile.tempdir = custom_temp_dir
 from flask import Flask, request, jsonify
 from bs4 import BeautifulSoup
 import requests
@@ -16,6 +20,12 @@ from langchain_openai import ChatOpenAI
 from gtts import gTTS
 import platform
 import threading
+import io
+from io import BytesIO
+from pydub import AudioSegment
+from pydub.playback import play
+
+
 
 # Load environment variables
 dotenv.load_dotenv()
@@ -79,17 +89,36 @@ def extract_recipe_details(raw_text):
         print(f"Error extracting recipe details: {e}")
         return None
 
+# def speak(text):
+#     print(f"Speaking: {text}")
+#     tts = gTTS(text=text, lang="en")
+#     tts.save("output.mp3")
+#     if platform.system() == "Windows":
+#         os.system("start output.mp3")
+#     elif platform.system() == "Darwin":
+#         os.system("afplay output.mp3")
+#     else:
+#         os.system("mpg123 output.mp3")
+#     print("Speech playback complete.")
+
 def speak(text):
-    print(f"Speaking: {text}")
-    tts = gTTS(text=text, lang="en")
-    tts.save("output.mp3")
-    if platform.system() == "Windows":
-        os.system("start output.mp3")
-    elif platform.system() == "Darwin":
-        os.system("afplay output.mp3")
-    else:
-        os.system("mpg123 output.mp3")
-    print("Speech playback complete.")
+    """Generate speech and play it in memory."""
+    try:
+        print(f"Speaking: {text}")
+        
+        # Generate the audio as an in-memory stream
+        tts = gTTS(text=text, lang="en")
+        audio_buffer = BytesIO()  # Store audio in memory (no temp file)
+        tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0)
+        
+        # Play the audio using pydub (in memory)
+        audio_segment = AudioSegment.from_file(audio_buffer, format="mp3")
+        play(audio_segment)
+        
+        print("Speech playback complete.")
+    except Exception as e:
+        print(f"Error in speak function: {e}")
 
 def listen_for_wake_word():
     recorder.start()
@@ -101,16 +130,35 @@ def listen_for_wake_word():
             recorder.stop()
             return True
 
+# def listen_for_question(client):
+#     duration = 5
+#     sample_rate = 16000
+#     print("Listening for question...")
+#     audio_data = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype="int16")
+#     sd.wait()
+#     wavfile.write("question.wav", sample_rate, np.squeeze(audio_data))
+#     with open("question.wav", "rb") as f:
+#         transcription = client.audio.transcriptions.create(model="whisper-1", file=f)    
+#         return transcription.text
+
 def listen_for_question(client):
-    duration = 5
+    """Listen for a question and transcribe it using OpenAI Whisper."""
+    duration = 8
     sample_rate = 16000
     print("Listening for question...")
+
+    # Record audio as a NumPy array
     audio_data = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype="int16")
     sd.wait()
-    wavfile.write("question.wav", sample_rate, np.squeeze(audio_data))
-    with open("question.wav", "rb") as f:
-        transcription = client.audio.transcriptions.create(model="whisper-1", file=f)    
-        return transcription.text
+
+    # Store audio in memory (BytesIO), not as a file
+    audio_buffer = io.BytesIO()
+    wavfile.write(audio_buffer, sample_rate, np.squeeze(audio_data))
+    audio_buffer.seek(0)
+
+    # Send to OpenAI Whisper for transcription
+    transcription = client.audio.transcriptions.create(model="whisper-1", file=audio_buffer)
+    return transcription.text
 
 def query_llm_with_recipe(client, recipe, question):
     prompt = (
@@ -153,14 +201,25 @@ def process_recipe():
 
 client = openai.OpenAI(api_key=open_ai_api_key)
 
+# def persistent_voice_interaction():
+#     global wake_word_active
+#     while wake_word_active:
+#         if listen_for_wake_word():
+#             speak("I'm listening. What would you like to know?")
+#             question = listen_for_question(client)
+#             answer = query_llm_with_recipe(client, loaded_recipe, question)
+#             speak(answer)
+
 def persistent_voice_interaction():
     global wake_word_active
-    while wake_word_active:
-        if listen_for_wake_word():
+    while wake_word_active:  # Keep looping as long as wake_word_active is True
+        if listen_for_wake_word():  # Wait for the wake word
             speak("I'm listening. What would you like to know?")
             question = listen_for_question(client)
             answer = query_llm_with_recipe(client, loaded_recipe, question)
             speak(answer)
+        # Loop back to listening for the wake word
+
 
 @app.route('/stop', methods=['POST'])
 def stop():
