@@ -71,7 +71,8 @@ recipe_extraction_chain = prompt_template | llm
 # Utility functions
 def fetch_all_text_from_url(url):
     try:
-        response = requests.get(url)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'}
+        response = requests.get(url, headers= headers)
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, "html.parser")
             text = ' '.join(element.get_text(separator=" ", strip=True) for element in soup.find_all(['p', 'li', 'h1', 'h2', 'h3', 'h4']))
@@ -175,7 +176,10 @@ def query_llm_with_recipe(client, recipe, question):
         f"Steps:\n" + "\n".join(recipe["steps"]) + "\n\n"
         f"Additional Information: {recipe['additional_info']}\n\n"
         f"User Question: {question}\n\n"
-        "Answer the question as accurately and concisely as possible based on the recipe above."
+        "Answer the question as accurately and concisely as possible based on the recipe above. "
+        " If the user asks something off topic, respond with 'I'm a chef not a ____', but fill in "
+        " the blank with an appropriate word based on the user's question, while also elaborating with a small joke "
+
     )
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -185,11 +189,40 @@ def query_llm_with_recipe(client, recipe, question):
     )   
     return response.choices[0].message.content
 # Flask Routes
-@app.route('/process_recipe', methods=['POST'])
+# @app.route('/process_recipe', methods=['POST'])
+# def process_recipe():
+#     global loaded_recipe, wake_word_active
+#     data = request.json
+#     url = data.get("url")
+#     if not url:
+#         return jsonify({"error": "No URL provided"}), 400
+
+#     raw_text = fetch_all_text_from_url(url)
+#     if not raw_text:
+#         return jsonify({"error": "Failed to fetch text from the provided URL"}), 400
+
+#     recipe_details = extract_recipe_details(raw_text)
+#     if not recipe_details:
+#         return jsonify({"error": "Failed to extract recipe details"}), 500
+
+#     loaded_recipe = recipe_details
+#     wake_word_active = True
+#     threading.Thread(target=persistent_voice_interaction).start()
+#     return jsonify({"message": "Recipe loaded and listening for voice commands."})
+
+
+@app.route('/process_recipe', methods=['GET', 'POST'])
 def process_recipe():
     global loaded_recipe, wake_word_active
-    data = request.json
-    url = data.get("url")
+
+    # Check if it's a GET request (data comes from query parameters)
+    if request.method == 'GET':
+        url = request.args.get("url")  # Extract the 'url' from the query string
+    else:
+        # For POST requests, extract JSON from the request body
+        data = request.json
+        url = data.get("url")
+
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
@@ -205,17 +238,9 @@ def process_recipe():
     wake_word_active = True
     threading.Thread(target=persistent_voice_interaction).start()
     return jsonify({"message": "Recipe loaded and listening for voice commands."})
-
 client = openai.OpenAI(api_key=open_ai_api_key)
 
-# def persistent_voice_interaction():
-#     global wake_word_active
-#     while wake_word_active:
-#         if listen_for_wake_word():
-#             speak("I'm listening. What would you like to know?")
-#             question = listen_for_question(client)
-#             answer = query_llm_with_recipe(client, loaded_recipe, question)
-#             speak(answer)
+
 
 def persistent_voice_interaction():
     global wake_word_active
