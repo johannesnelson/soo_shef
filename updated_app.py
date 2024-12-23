@@ -178,7 +178,9 @@ def query_llm_with_recipe(client, recipe, question):
         f"User Question: {question}\n\n"
         "Answer the question as accurately and concisely as possible based on the recipe above. "
         " If the user asks something off topic, respond with 'I'm a chef not a ____', but fill in "
-        " the blank with an appropriate word based on the user's question, while also elaborating with a small joke "
+        " the blank with an appropriate word based on the user's question, while also elaborating with a small joke. "
+        " Keep your responses short and clear, because they will be asking about specific steps. Always address the user "
+        " As 'Chef."
 
     )
     response = client.chat.completions.create(
